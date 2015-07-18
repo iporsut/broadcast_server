@@ -83,12 +83,28 @@ func clientService() {
 			log.Fatal(err)
 		}
 		go func(c net.Conn) {
+			closeCh := make(chan struct{})
+			go func(c net.Conn, closeCh chan struct{}) {
+				for {
+					b := make([]byte, 1)
+					_, err := c.Read(b)
+					if err != nil {
+						closeCh <- struct{}{}
+						break
+					}
+				}
+			}(c, closeCh)
+
 			ch := make(chan string)
 			key := time.Now().Unix()
 			clientChan.Set(key, ch)
 			for {
-				msg := <-ch
-				fmt.Fprintln(c, msg)
+				select {
+				case msg := <-ch:
+					fmt.Fprintln(c, msg)
+				case <-closeCh:
+					break
+				}
 			}
 			clientChan.Del(key)
 			c.Close()
